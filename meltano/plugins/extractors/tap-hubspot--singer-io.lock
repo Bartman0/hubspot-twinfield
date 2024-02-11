@@ -1,0 +1,71 @@
+{
+  "plugin_type": "extractors",
+  "name": "tap-hubspot",
+  "namespace": "tap_hubspot",
+  "variant": "singer-io",
+  "label": "Hubspot",
+  "docs": "https://hub.meltano.com/extractors/tap-hubspot--singer-io",
+  "repo": "https://github.com/singer-io/tap-hubspot",
+  "pip_url": "git+https://github.com/singer-io/tap-hubspot.git",
+  "description": "Inbound Marketing software",
+  "logo_url": "https://hub.meltano.com/assets/logos/extractors/hubspot.png",
+  "capabilities": [
+    "discover",
+    "properties",
+    "state"
+  ],
+  "settings_group_validation": [
+    [
+      "redirect_uri",
+      "client_id",
+      "client_secret",
+      "refresh_token",
+      "start_date"
+    ],
+    [
+      "hapikey",
+      "start_date"
+    ]
+  ],
+  "settings": [
+    {
+      "name": "redirect_uri",
+      "label": "Redirect URI",
+      "documentation": "https://legacydocs.hubspot.com/docs/methods/oauth2/oauth2-quickstart",
+      "description": "This is the URL that the user will be redirected to after they authorize your app for the requested scopes"
+    },
+    {
+      "name": "client_id",
+      "label": "Client ID",
+      "documentation": "https://legacydocs.hubspot.com/docs/methods/oauth2/oauth2-quickstart",
+      "description": "This identifies the app used to connect to HubSpot."
+    },
+    {
+      "name": "client_secret",
+      "kind": "password",
+      "label": "Client Secret",
+      "description": "The client secret used for authentication.",
+      "sensitive": true
+    },
+    {
+      "name": "refresh_token",
+      "kind": "password",
+      "label": "Refresh Token",
+      "description": "This is the refresh token provided by HubSpot.",
+      "sensitive": true
+    },
+    {
+      "name": "hapikey",
+      "kind": "password",
+      "label": "Hubspot API Key",
+      "description": "This is the Hubspot API Key provided by HubSpot.\n\nAs an alternative to OAuth 2.0 authentication during development, you may specify\nthis setting to authenticate with the HubSpot API. This should be used only for\nlow-volume development work, as the\n[HubSpot API Usage Guidelines](https://developers.hubspot.com/apps/api_guidelines)\nspecify that integrations should use OAuth for authentication.\n\nAny OAuth authentication parameters will be ignored if this key is present!\n",
+      "sensitive": true
+    },
+    {
+      "name": "start_date",
+      "kind": "date_iso8601",
+      "label": "Start Date",
+      "description": "This is the cutoff date for syncing historical data."
+    }
+  ]
+}
