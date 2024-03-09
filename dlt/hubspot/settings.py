@@ -11,7 +11,7 @@ CRM_COMPANIES_ENDPOINT = (
     "/crm/v3/objects/companies?associations=contacts,deals,products,tickets,quotes"
 )
 CRM_DEALS_ENDPOINT = (
-"/crm/v3/objects/deals?associations=line_items"
+    "/crm/v3/objects/deals?associations=line_items"
 )
 CRM_LINE_ITEMS_ENDPOINT = "/crm/v3/objects/line_items"
 CRM_PRODUCTS_ENDPOINT = "/crm/v3/objects/products"
