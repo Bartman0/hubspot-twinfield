@@ -12,10 +12,19 @@ environments:
           redirect_uri: https://api.hubspot.com/
           refresh_token: my_token
           start_date: 2017-01-01T00:00:00Z
+        select:
+        - deals.*
+        - quotes.*
+        - line_items.*
+        - owners.*
 - name: staging
 - name: prod
 plugins:
   extractors:
+  #- name: tap-hubspot
+  #variant: meltanolabs
+  #pip_url: git+https://github.com/MeltanoLabs/tap-hubspot.git
+  #client_id: c4b7109a-e010-4d7a-9c74-73b2457c4c38
   - name: tap-hubspot
     variant: singer-io
     pip_url: git+https://github.com/singer-io/tap-hubspot.git

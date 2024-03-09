@@ -1,0 +1,24 @@
+engine_version: 1
+sources:
+  hubspot:
+    is_dirty: false
+    last_commit_sha: 980e356c698b3c7498bf7ba1ce578fe588857d4d
+    last_commit_timestamp: '2024-03-05T17:07:58+01:00'
+    files:
+      hubspot/__init__.py:
+        commit_sha: 980e356c698b3c7498bf7ba1ce578fe588857d4d
+        git_sha: 564f7163515af860dae259f90577d813f35572ff
+        sha3_256: 0a3f7efa81086105a3c9bf3782550aa032d51eb4fc53e304b0ee2d340655da41
+      hubspot/README.md:
+        commit_sha: 980e356c698b3c7498bf7ba1ce578fe588857d4d
+        git_sha: 357170ef3ce5fd9cb4e6600d63ea0cec9de20de0
+        sha3_256: b4ddadb14964623f3edb60500eb0accc1bd97c90182b961a527e909f75830fb6
+      hubspot/settings.py:
+        commit_sha: 980e356c698b3c7498bf7ba1ce578fe588857d4d
+        git_sha: 05fe4d9d0bf1b57760146513cf11b41fb89f0c16
+        sha3_256: ee7a3f75e1f5988f4926b42fbf3c6c2ddb2f12326af74d302d8bbfddeaef85c1
+      hubspot/helpers.py:
+        commit_sha: 980e356c698b3c7498bf7ba1ce578fe588857d4d
+        git_sha: 3ab42f70ef8e12ee32502f58e89f3a0ccb30f67f
+        sha3_256: b236cdff1e7112808f8d6da106d4c0ea341ba19f67edca907622bb9d9181d9ef
+    dlt_version_constraint: '>=0.3.25'
