@@ -239,3 +239,4 @@ fabric.properties
 
 *.lock
 secrets.toml
+ssl
