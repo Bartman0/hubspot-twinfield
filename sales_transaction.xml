@@ -1,0 +1,28 @@
+<transaction destiny="final" autobalancevat="false">
+	<header>
+    <office>061192-1</office>
+    <code>VRK</code>
+    <currency>EUR</currency>
+    <date>20240615</date>
+    <duedate>20240615</duedate>
+    <duedate></duedate>
+    <invoicenumber>INV123</invoicenumber>
+    <paymentreference>INV123</paymentreference>
+  </header>
+	<lines>
+    <line type="total" id="1">
+      <dim1>1300</dim1>
+      <dim2>1000</dim2>
+      <debitcredit>debit</debitcredit>
+      <value>123.00</value>
+      <description />
+    </line>
+    <line type="detail" id="2">
+      <dim1>8010</dim1>
+      <debitcredit>credit</debitcredit>
+      <value>123.00</value>
+      <vatcode>NL1E</vatcode>
+      <description />
+    </line>
+  </lines>
+</transaction>

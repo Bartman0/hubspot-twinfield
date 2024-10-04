@@ -57,6 +57,6 @@ for items in deal_line_items.results:
         li_details = api.get_by_id(object_type="line_item", object_id=li.id)
         print(li_details)
 
-all_products = api_client.crm.products.get_all()
+all_products = api_client.crm.products.get_all(properties=["kostenplaats", "grootboek"])
 
 print(all_products)

@@ -59,7 +59,11 @@ print(tw.organisation)
 print(tw.list_offices())
 print(tw.determine_cluster())
 print(tw.dimensions("BAS").columns)
-print(tw.dimensions("CRD").columns)
+# print(tw.dimensions("CRD").columns)
 print(tw.dimensions("DEB").columns)
-
-print(str(tw))
+print(type(tw.dimensions("DEB")))
+for i, deb in tw.dimensions("DEB").iterrows():
+    print(
+        deb["dimension.code"],
+        deb["dimension.name"],
+    )
