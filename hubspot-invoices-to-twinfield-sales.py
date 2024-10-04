@@ -1,7 +1,6 @@
 import os
 from dotenv import load_dotenv
 from hubspot import HubSpot
-from hubspot.crm import companies
 from hubspot.crm.associations import BatchInputPublicObjectId
 from urllib3.util.retry import Retry
 import logging
@@ -10,12 +9,11 @@ import requests
 from requests.auth import HTTPBasicAuth
 from oauthlib.oauth2 import WebApplicationClient
 from http_server import HTTPServer
-import lxml
-import lxml.builder
 from lxml import etree
-from lxml.etree import Element, SubElement, QName, tostring
+from lxml.etree import Element, SubElement, QName
 
 
+TWINFIELD_ENDPOINT = "https://api.accounting2.twinfield.com/webservices/processxml.asmx"
 GROOTBOEKREKENING_DEBITEUREN = "1300"
 
 
@@ -132,19 +130,15 @@ def generate_twinfield_transaction_request(
         line_detail.set("type", "detail")
         line_detail.set("id", str(line_id))
         line_id += 1
-        SubElement(line_detail, "value").text = str(line_item.amount)
+        SubElement(line_detail, "value").text = str(line_item.properties["amount"])
         SubElement(line_detail, "debitcredit").text = "credit"
-        SubElement(line_detail, "dim1").text = line_item.grootboek
-        SubElement(line_detail, "dim2").text = line_item.kostenplaats
-        SubElement(line_detail, "description").text = line_item.name
+        SubElement(line_detail, "dim1").text = line_item.properties["grootboek"]
+        SubElement(line_detail, "dim2").text = line_item.properties["kostenplaats"]
+        SubElement(line_detail, "description").text = line_item.properties["name"]
         SubElement(line_detail, "vatcode").text = "VN"
-        SubElement(line_detail, "vatvalue").text = 0
+        SubElement(line_detail, "vatvalue").text = str(0)
     return envelope
 
-
-request = generate_twinfield_transaction_request("CC", "AC", "123456", "5432", 1234, [])
-xml = etree.tostring(request, pretty_print=True)
-print(xml.decode(), end="")
 
 retry = Retry(
     total=3,
@@ -187,6 +181,8 @@ for invoice in invoices_details.results:
         logger.info(f"skipping invoice {invoice_number}[{invoice.id}]")
         continue
 
+    amount_billed = invoice.properties["hs_amount_billed"]
+
     batch_ids = BatchInputPublicObjectId([{"id": invoice.id}])
     invoice_companies = api_client.crm.associations.batch_api.read(
         from_object_type="invoice",
@@ -216,27 +212,43 @@ for invoice in invoices_details.results:
         batch_input_public_object_id=batch_ids,
     )
 
-    for items in invoice_line_items.results:
-        line_items_details = [
-            api_line_items.get_by_id(
-                line_item_id=line_item.id,
-                properties=[
-                    "amount",
-                    "quantity",
-                    "voorraadnummer",
-                    "name",
-                    "kostenplaats",
-                    "grootboek",
-                    "gewicht",
-                    "artikelsoort",
-                    "artikelgroep",
-                ],
-            )
-            for line_item in items.to
-        ]
+    line_items_details = [
+        api_line_items.get_by_id(
+            line_item_id=line_item.id,
+            properties=[
+                "amount",
+                "quantity",
+                "voorraadnummer",
+                "name",
+                "kostenplaats",
+                "grootboek",
+                "gewicht",
+                "artikelsoort",
+                "artikelgroep",
+            ],
+        )
+        for line_item in invoice_line_items.results[0].to
+    ]
     print(line_items_details)
 
-    twinfield_xml = generate_twinfield_transaction_request(
-        twinfield_company_code, twinfield_access_token, invoice_number
+    twinfield_request = generate_twinfield_transaction_request(
+        twinfield_company_code,
+        twinfield_access_token,
+        invoice_number,
+        company_relatienummer,
+        amount_billed,
+        line_items_details,
     )
-    print(lxml.etree.tostring(twinfield_xml, pretty_print=True))
+
+    twinfield_request_xml = etree.tostring(twinfield_request, pretty_print=True)
+    print(twinfield_request_xml.decode(), end="")
+
+    headers = {
+        "Content-Type": "text/xml",
+        "SOAPAction": "http://www.twinfield.com/ProcessXmlDocument",
+    }
+    twinfield_response = requests.post(
+        url=TWINFIELD_ENDPOINT, headers=headers, data=twinfield_request_xml
+    )
+    print(twinfield_response)
+    print(twinfield_response.__dict__)
