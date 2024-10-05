@@ -1,17 +1,19 @@
+import datetime
+import logging
 import os
+import secrets
+import sqlite3
+
+import requests
 from dotenv import load_dotenv
 from hubspot import HubSpot
 from hubspot.crm.associations import BatchInputPublicObjectId
-from urllib3.util.retry import Retry
-import logging
-import secrets
-import requests
-from requests.auth import HTTPBasicAuth
+from lxml.etree import Element, QName, SubElement, fromstring, tostring
 from oauthlib.oauth2 import WebApplicationClient
-from http_server import HTTPServer
-from lxml import etree
-from lxml.etree import Element, SubElement, QName
+from requests.auth import HTTPBasicAuth
+from urllib3.util.retry import Retry
 
+from http_server import HTTPServer
 
 TWINFIELD_ENDPOINT = "https://api.accounting2.twinfield.com/webservices/processxml.asmx"
 GROOTBOEKREKENING_DEBITEUREN = "1300"
@@ -21,6 +23,33 @@ load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger()
+
+
+def init_db():
+    connection = sqlite3.connect("/tmp/hubspot-twinfield.db")
+    cursor = connection.cursor()
+    cursor.execute(
+        "create table if not exists invoice_ids(invoice_id text primary key)"
+    )
+    return cursor
+
+
+def close_db(cursor):
+    cursor.connection.close()
+
+
+def is_invoice_id_in_db(cursor, invoice_id):
+    cursor.execute(
+        "SELECT invoice_id FROM invoice_ids WHERE invoice_id=?", (invoice_id,)
+    )
+    return False
+    # return cursor.fetchone() is not None
+
+
+def save_invoice_id_in_db(cursor, invoice_id):
+    cursor.execute("INSERT INTO invoice_ids(invoice_id) VALUES(?)", (invoice_id,))
+    logger.debug(f"numbers of rows inserted: {cursor.rowcount}")
+    cursor.connection.commit()
 
 
 # get access_token from .env file
@@ -37,6 +66,7 @@ def get_authorisation_code_twinfield():
     COMPANY_CODE = os.environ["TWINFIELD_COMPANY_CODE"]
 
     httpd, address = HTTPServer()
+    logger.debug(f"httpd server started on {address}:{httpd.server_port}")
 
     scope = [
         "openid",
@@ -63,7 +93,7 @@ def get_authorisation_code_twinfield():
     )
 
     response = requests.post(TOKEN_URL, data=body, auth=auth)
-    token = client.parse_request_body_response(response.text)
+    _ = client.parse_request_body_response(response.text)
 
     os.environ["TWINFIELD_ACCESS_TOKEN"] = str(client.access_token)
     os.environ["TWINFIELD_REFRESH_TOKEN"] = str(client.refresh_token)
@@ -77,6 +107,9 @@ def generate_twinfield_transaction_request(
     invoice_number,
     relatie_nummer,
     total_amount,
+    invoice_date,
+    due_date,
+    period,
     line_items_details,
 ):
     class XMLNamespaces:
@@ -110,11 +143,11 @@ def generate_twinfield_transaction_request(
     header = SubElement(transaction, "header")
     SubElement(header, "office").text = company_code
     SubElement(header, "code").text = "VRK"
-    SubElement(header, "period")
-    SubElement(header, "date")
+    SubElement(header, "period").text = period
+    SubElement(header, "date").text = invoice_date
     SubElement(header, "currency").text = "EUR"
     SubElement(header, "invoicenumber").text = invoice_number
-    SubElement(header, "duedate")
+    SubElement(header, "duedate").text = due_date
     lines = SubElement(transaction, "lines")
     line_id = 1
     line_total = SubElement(lines, "line")
@@ -140,115 +173,143 @@ def generate_twinfield_transaction_request(
     return envelope
 
 
-retry = Retry(
-    total=3,
-    backoff_factor=0.3,
-    status_forcelist=(500, 502, 504),
-)
-api_client = HubSpot(retry=retry)
+if __name__ == "__main__":
+    cursor = init_db()
 
-api_client.access_token = get_access_token_hubspot()
-
-# all_companies = api_client.crm.companies.get_all()
-
-# print(all_companies)
-
-api = api_client.crm.invoices.basic_api
-
-api_line_items = api_client.crm.line_items.basic_api
-api_companies = api_client.crm.companies.basic_api
-
-twinfield_company_code, twinfield_access_token = get_authorisation_code_twinfield()
-print(f"Access token: {twinfield_access_token}")
-
-invoices_details = api.get_crm_v3_objects_invoices(
-    properties=[
-        "hs_invoice_status",
-        "hs_amount_billed",
-        "hs_balance_due",
-        "hs_due_date",
-        "hs_number",
-    ]
-)
-
-for invoice in invoices_details.results:
-    invoice_status = invoice.properties["hs_invoice_status"]
-    invoice_number = invoice.properties["hs_number"]
-    logger.info(
-        f"retrieved invoice {invoice_number}[{invoice.id}] with status {invoice_status}"
+    retry = Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=(500, 502, 504),
     )
-    if invoice_status != "paid":
-        logger.info(f"skipping invoice {invoice_number}[{invoice.id}]")
-        continue
+    api_client = HubSpot(retry=retry)
 
-    amount_billed = invoice.properties["hs_amount_billed"]
+    api_client.access_token = get_access_token_hubspot()
 
-    batch_ids = BatchInputPublicObjectId([{"id": invoice.id}])
-    invoice_companies = api_client.crm.associations.batch_api.read(
-        from_object_type="invoice",
-        to_object_type="companies",
-        batch_input_public_object_id=batch_ids,
-    )
-    invoice_companies_dict = invoice_companies.to_dict()
-    if (
-        "num_errors" in invoice_companies_dict
-        and invoice_companies_dict["num_errors"] > 0
-    ):
-        logger.error(f"{invoice_companies_dict['errors'][0]['message']}")
-        continue
-    company_id = invoice_companies.results[0].to[0].id
-    company = api_companies.get_by_id(
-        company_id=company_id, properties=["relatie_nummer", "name"]
-    )
-    logger.info(f"company {company.properties['name']}[{company.id}] was retrieved")
-    if "relatie_nummer" not in company.properties:
-        logging.error(f"{company.name} does not have a relation number")
-        continue
-    company_relatienummer = company.properties["relatie_nummer"]
+    # all_companies = api_client.crm.companies.get_all()
 
-    invoice_line_items = api_client.crm.associations.batch_api.read(
-        from_object_type="invoice",
-        to_object_type="line_items",
-        batch_input_public_object_id=batch_ids,
+    # print(all_companies)
+
+    api = api_client.crm.invoices.basic_api
+
+    api_line_items = api_client.crm.line_items.basic_api
+    api_companies = api_client.crm.companies.basic_api
+
+    twinfield_company_code, twinfield_access_token = get_authorisation_code_twinfield()
+    print(f"Access token: {twinfield_access_token}")
+
+    invoices_details = api.get_crm_v3_objects_invoices(
+        properties=[
+            "hs_invoice_status",
+            "hs_amount_billed",
+            "hs_balance_due",
+            "hs_invoice_date",
+            "hs_due_date",
+            "hs_number",
+        ]
     )
 
-    line_items_details = [
-        api_line_items.get_by_id(
-            line_item_id=line_item.id,
-            properties=[
-                "amount",
-                "quantity",
-                "voorraadnummer",
-                "name",
-                "kostenplaats",
-                "grootboek",
-                "gewicht",
-                "artikelsoort",
-                "artikelgroep",
-            ],
+    for invoice in invoices_details.results:
+        invoice_status = invoice.properties["hs_invoice_status"]
+        invoice_number = invoice.properties["hs_number"]
+        logger.info(
+            f"retrieved invoice {invoice_number}[{invoice.id}] with status {invoice_status}"
         )
-        for line_item in invoice_line_items.results[0].to
-    ]
-    print(line_items_details)
+        if invoice_status != "paid":
+            logger.info(f"skipping invoice {invoice_number}[{invoice.id}]")
+            continue
 
-    twinfield_request = generate_twinfield_transaction_request(
-        twinfield_company_code,
-        twinfield_access_token,
-        invoice_number,
-        company_relatienummer,
-        amount_billed,
-        line_items_details,
-    )
+        if is_invoice_id_in_db(cursor, invoice.id):
+            logger.info(
+                f"invoice already processed, skipping invoice {invoice_number}[{invoice.id}]"
+            )
+            continue
 
-    twinfield_request_xml = etree.tostring(twinfield_request, pretty_print=True)
-    print(twinfield_request_xml.decode(), end="")
+        amount_billed = invoice.properties["hs_amount_billed"]
+        invoice_date = datetime.datetime.fromisoformat(
+            str(invoice.properties["hs_invoice_date"])
+        ).strftime("%Y%m%d")
+        due_date = datetime.datetime.fromisoformat(
+            str(invoice.properties["hs_due_date"])
+        ).strftime("%Y%m%d")
+        period = datetime.datetime.fromisoformat(
+            str(invoice.properties["hs_invoice_date"])
+        ).strftime("%Y/%m")
 
-    headers = {
-        "Content-Type": "text/xml",
-        "SOAPAction": "http://www.twinfield.com/ProcessXmlDocument",
-    }
-    twinfield_response = requests.post(
-        url=TWINFIELD_ENDPOINT, headers=headers, data=twinfield_request_xml
-    )
-    print(twinfield_response)
-    print(twinfield_response.__dict__)
+        batch_ids = BatchInputPublicObjectId([{"id": invoice.id}])
+        invoice_companies = api_client.crm.associations.batch_api.read(
+            from_object_type="invoice",
+            to_object_type="companies",
+            batch_input_public_object_id=batch_ids,
+        )
+        invoice_companies_dict = invoice_companies.to_dict()
+        if (
+            "num_errors" in invoice_companies_dict
+            and invoice_companies_dict["num_errors"] > 0
+        ):
+            logger.error(f"{invoice_companies_dict['errors'][0]['message']}")
+            continue
+        company_id = invoice_companies.results[0].to[0].id
+        company = api_companies.get_by_id(
+            company_id=company_id, properties=["relatie_nummer", "name"]
+        )
+        logger.info(f"company {company.properties['name']}[{company.id}] was retrieved")
+        if "relatie_nummer" not in company.properties:
+            logging.error(f"{company.name} does not have a relation number")
+            continue
+        company_relatienummer = company.properties["relatie_nummer"]
+
+        invoice_line_items = api_client.crm.associations.batch_api.read(
+            from_object_type="invoice",
+            to_object_type="line_items",
+            batch_input_public_object_id=batch_ids,
+        )
+
+        line_items_details = [
+            api_line_items.get_by_id(
+                line_item_id=line_item.id,
+                properties=[
+                    "amount",
+                    "quantity",
+                    "voorraadnummer",
+                    "name",
+                    "kostenplaats",
+                    "grootboek",
+                    "gewicht",
+                    "artikelsoort",
+                    "artikelgroep",
+                ],
+            )
+            for line_item in invoice_line_items.results[0].to
+        ]
+        logger.debug(f"line items details: {line_items_details}")
+
+        twinfield_request = generate_twinfield_transaction_request(
+            twinfield_company_code,
+            twinfield_access_token,
+            invoice_number,
+            company_relatienummer,
+            amount_billed,
+            invoice_date,
+            due_date,
+            period,
+            line_items_details,
+        )
+
+        twinfield_request_xml = tostring(twinfield_request, pretty_print=True)
+        logger.debug(twinfield_request_xml.decode())
+
+        headers = {
+            "Content-Type": "text/xml",
+            "SOAPAction": "http://www.twinfield.com/ProcessXmlDocument",
+        }
+        twinfield_response = requests.post(
+            url=TWINFIELD_ENDPOINT, headers=headers, data=twinfield_request_xml
+        )
+        twinfield_content = fromstring(twinfield_response.content)
+        for view in twinfield_content.xpath("//attribute::*[contains(., 'error')]/.."):
+            logger.error(view.attrib["msg"])
+            continue
+
+        save_invoice_id_in_db(cursor, invoice.id)
+
+    close_db(cursor)
